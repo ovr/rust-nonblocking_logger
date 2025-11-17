@@ -24,9 +24,11 @@ jobs:
           override: true
       - name: Build release
         run: cargo build --release
-      - id: auth
+      - name: Auth with crates.io
+        id: auth
         uses: rust-lang/crates-io-auth-action@v1
-      - run: Cargo publish
+      - name: Publish crate
+        run: cargo publish
         env:
           CARGO_REGISTRY_TOKEN: "${{ steps.auth.outputs.token }}"
       - name: Create GitHub Release
