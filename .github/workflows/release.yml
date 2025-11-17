@@ -1,0 +1,51 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write  # Required for creating GitHub releases
+  id-token: write  # Required for trusted publishing to crates.io via OIDC
+
+jobs:
+  release:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      - name: Build release
+        run: cargo build --release
+      - id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - run: Cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: "${{ steps.auth.outputs.token }}"
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.version.outputs.tag }}
+          body: |
+            ## Release ${{ steps.version.outputs.tag }}
+
+            Published to [crates.io](https://crates.io/crates/log_nonblock/${{ steps.version.outputs.version }})
+
+            ### Installation
+            ```toml
+            [dependencies]
+            log_nonblock = "${{ steps.version.outputs.version }}"
+            ```
+
+            ### Changes
+            See commit history for detailed changes.
+          draft: false
+          prerelease: false
+          generate_release_notes: true
