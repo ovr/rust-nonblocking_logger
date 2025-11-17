@@ -1,6 +1,6 @@
 [package]
 name = "log_nonblock"
-version = "0.1.1"
+version = "0.1.2"
 description = "Asyncronus logger that prints all messages to STDOUT or STDERR in non blocking mode"
 license = "MIT"
 authors = ["Dmitrii Patsura <talk@dmtry.me>"]
