@@ -1,11 +1,12 @@
 use crate::worker::WorkerMessage;
-use colored::Colorize;
-use log::{Level, LevelFilter, Log, Metadata, Record, SetLoggerError};
+#[cfg(feature = "colored")]
+use colored::Color;
+use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use time::format_description::FormatItem;
-use time::{OffsetDateTime, UtcOffset};
+#[cfg(feature = "timestamps")]
+use time::{OffsetDateTime, UtcOffset, format_description::FormatItem};
 
 mod io;
 mod worker;
@@ -92,7 +93,7 @@ impl NonBlockingLoggerBuilder {
     #[must_use = "You must call init() to begin logging"]
     #[cfg(feature = "colors")]
     pub fn with_colors(mut self, colors: bool) -> Self {
-        self.colors = colors;
+        self.options.colors = colors;
         self
     }
 
@@ -110,14 +111,16 @@ impl NonBlockingLoggerBuilder {
         #[cfg(feature = "stderr")]
         {
             if let Err(err) = io::set_nonblocking(std::io::stdout().as_raw_fd()) {
-                println!("Failed to set STDERR to non-blocking mode: {}", err);
+                eprintln!("Failed to set STDERR to non-blocking mode: {}", err);
             }
         }
 
         let (sender, receiver) = crossbeam_channel::bounded(1024);
 
         let (worker, running) = worker::LogWorker::new(receiver);
-        worker.spawn();
+        if let Err(err) = worker.spawn() {
+            println!("Failed to spawn logger worker: {}", err);
+        };
 
         let logger = NonBlockingLogger {
             options: self.options,
@@ -287,7 +290,7 @@ impl Log for NonBlockingLogger {
             };
 
             let message = format!(
-                "{}{} [{}{}] {}",
+                "{}{} [{}{}] {}\r\n",
                 timestamp,
                 level_string,
                 target,
@@ -300,12 +303,15 @@ impl Log for NonBlockingLogger {
     }
 
     fn flush(&self) {
-        self.sender.send(WorkerMessage::Flush).unwrap();
+        let (done_tx, done_rx) = crossbeam_channel::bounded(1);
+        self.sender.send(WorkerMessage::Flush(done_tx)).unwrap();
+        // Block until flush completes
+        let _ = done_rx.recv();
     }
 }
 
 /// The colored crate will disable colors when STDOUT is not a terminal. This method overrides this
-/// behaviour to check the status of STDERR instead.
+/// behavior to check the status of STDERR instead.
 #[cfg(all(feature = "colored", feature = "stderr"))]
 fn use_stderr_for_colors() {
     use std::io::{IsTerminal, stderr};

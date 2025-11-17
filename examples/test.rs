@@ -10,12 +10,8 @@ fn main() {
     let large_string =
         "[super large message that should crash fd in non blocking mode]".repeat(100000);
     log::warn!("{}", large_string);
-
-    thread::sleep(std::time::Duration::from_secs(2));
-    log::warn!("This is an example message.");
-    thread::sleep(std::time::Duration::from_secs(2));
-
     log::logger().flush();
 
-    thread::sleep(std::time::Duration::from_secs(2));
+    log::warn!("This is an example message.");
+    log::logger().flush();
 }

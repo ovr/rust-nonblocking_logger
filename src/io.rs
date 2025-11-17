@@ -1,7 +1,5 @@
-use log::SetLoggerError;
-use std::io::{self, Write};
-use std::os::fd::{AsRawFd, RawFd};
-use std::time::Duration;
+use std::io;
+use std::os::fd::RawFd;
 
 /// Sets a file descriptor to non-blocking mode on Unix systems
 #[cfg(unix)]
