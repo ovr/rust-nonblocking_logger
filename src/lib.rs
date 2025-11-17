@@ -152,14 +152,14 @@ impl NonBlockingLoggerBuilder {
         #[cfg(not(feature = "stderr"))]
         {
             if let Err(err) = io::set_nonblocking(std::io::stdout().as_raw_fd()) {
-                println!("Failed to set STDOUT to non-blocking mode: {}", err);
+                io::write_stderr_with_retry(&format!("Failed to set STDOUT to non-blocking mode: {}", err));
             }
         }
 
         #[cfg(feature = "stderr")]
         {
-            if let Err(err) = io::set_nonblocking(std::io::stdout().as_raw_fd()) {
-                eprintln!("Failed to set STDERR to non-blocking mode: {}", err);
+            if let Err(err) = io::set_nonblocking(std::io::stderr().as_raw_fd()) {
+                io::write_stderr_with_retry(&format!("Failed to set STDERR to non-blocking mode: {}", err));
             }
         }
 
@@ -359,20 +359,24 @@ impl Log for NonBlockingLogger {
                 record.args()
             );
 
-            self.sender
-                .send(worker::WorkerMessage::Log(message))
-                .unwrap();
+            if let Err(err) = self.sender.send(worker::WorkerMessage::Log(message)) {
+                io::write_stderr_with_retry(&format!("Failed to schedule log: {}", err));
+            }
         }
     }
 
     fn flush(&self) {
         let (done_tx, done_rx) = crossbeam_channel::bounded(1);
-        self.sender
-            .send(worker::WorkerMessage::Flush(done_tx))
-            .unwrap();
 
-        // Block until flush completes
-        let _ = done_rx.recv();
+        match self.sender.send(worker::WorkerMessage::Flush(done_tx)) {
+            Ok(_) => {
+                // Block until flush completes
+                let _ = done_rx.recv();
+            }
+            Err(err) => {
+                io::write_stderr_with_retry(&format!("Failed to send flush request to logger worker: {}", err));
+            }
+        }
     }
 }
 

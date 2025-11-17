@@ -5,7 +5,7 @@ description = "Asyncronus logger that prints all messages to STDOUT or STDERR in
 license = "MIT"
 authors = ["Dmitrii Patsura <talk@dmtry.me>"]
 edition = "2024"
-repository = "https://github.com/ovr/rust-log_nonblock"
+repository = "https://github.com/ovr/log_nonblock"
 
 [features]
 default = ["colors", "timestamps"]
@@ -16,6 +16,7 @@ stderr = []
 
 [dependencies]
 log = { version = "0.4.28", features = ["std"] }
+# optional crates
 time = { version = "0.3.44", features = ["formatting", "local-offset", "macros"], optional = true }
 colored = { version = "3.0.0", optional = true }
 crossbeam-channel = "0.5.15"

@@ -62,9 +62,7 @@ impl LogWorker {
                 }
                 Err(ref err) => {
                     // Hard error, give up
-                    if cfg!(debug_assertions) {
-                        eprintln!("Error flushing to stdout: {}", err);
-                    }
+                    crate::io::write_stderr_with_retry(&format!("Error flushing to stdout: {}", err));
                     break;
                 }
             }
@@ -75,10 +73,7 @@ impl LogWorker {
         Self::write_buffer(out, buf);
 
         if let Err(err) = out.flush() {
-            #[allow(clippy::collapsible_if)]
-            if cfg!(debug_assertions) {
-                eprintln!("Error flushing stdout: {}", err);
-            }
+            crate::io::write_stderr_with_retry(&format!("Error flushing stdout: {}", err));
         }
     }
 
