@@ -62,7 +62,10 @@ impl LogWorker {
                 }
                 Err(ref err) => {
                     // Hard error, give up
-                    crate::io::write_stderr_with_retry(&format!("Error flushing to stdout: {}", err));
+                    crate::io::write_stderr_with_retry(&format!(
+                        "Error flushing to stdout: {}",
+                        err
+                    ));
                     break;
                 }
             }

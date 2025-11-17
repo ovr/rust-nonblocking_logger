@@ -152,14 +152,20 @@ impl NonBlockingLoggerBuilder {
         #[cfg(not(feature = "stderr"))]
         {
             if let Err(err) = io::set_nonblocking(std::io::stdout().as_raw_fd()) {
-                io::write_stderr_with_retry(&format!("Failed to set STDOUT to non-blocking mode: {}", err));
+                io::write_stderr_with_retry(&format!(
+                    "Failed to set STDOUT to non-blocking mode: {}",
+                    err
+                ));
             }
         }
 
         #[cfg(feature = "stderr")]
         {
             if let Err(err) = io::set_nonblocking(std::io::stderr().as_raw_fd()) {
-                io::write_stderr_with_retry(&format!("Failed to set STDERR to non-blocking mode: {}", err));
+                io::write_stderr_with_retry(&format!(
+                    "Failed to set STDERR to non-blocking mode: {}",
+                    err
+                ));
             }
         }
 
@@ -374,7 +380,10 @@ impl Log for NonBlockingLogger {
                 let _ = done_rx.recv();
             }
             Err(err) => {
-                io::write_stderr_with_retry(&format!("Failed to send flush request to logger worker: {}", err));
+                io::write_stderr_with_retry(&format!(
+                    "Failed to send flush request to logger worker: {}",
+                    err
+                ));
             }
         }
     }
