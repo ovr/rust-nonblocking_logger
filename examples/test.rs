@@ -1,4 +1,4 @@
-use rust_nonblocking_logger::NonBlockingLoggerBuilder;
+use log_nonblock::NonBlockingLoggerBuilder;
 
 fn main() {
     let logger = NonBlockingLoggerBuilder::new().init().unwrap();
