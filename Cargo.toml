@@ -13,6 +13,7 @@ log = { version = "0.4.28", features = ["std"] }
 time = { version = "0.3.44", features = ["formatting", "local-offset", "macros"], optional = true }
 colored = { version = "3.0.0", optional = true }
 libc = "0.2.177"
+crossbeam-channel = "0.3.1"
 
 [[example]]
 name = "test"

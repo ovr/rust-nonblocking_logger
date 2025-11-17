@@ -1,10 +1,14 @@
+use crate::worker::WorkerMessage;
 use colored::Colorize;
 use log::{Level, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::os::fd::AsRawFd;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use time::format_description::FormatItem;
 use time::{OffsetDateTime, UtcOffset};
 
 mod io;
+mod worker;
 
 #[cfg(feature = "timestamps")]
 #[derive(PartialEq)]
@@ -24,7 +28,8 @@ const TIMESTAMP_FORMAT_UTC: &[FormatItem] = time::macros::format_description!(
     "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
 );
 
-pub struct NonBlockingLogger {
+#[derive(Clone, Debug)]
+pub struct NonBlockingOptions {
     /// The default logging level
     default_level: LevelFilter,
 
@@ -46,30 +51,37 @@ pub struct NonBlockingLogger {
     timestamps_format: Option<&'static [FormatItem<'static>]>,
 }
 
-impl NonBlockingLogger {
+pub struct NonBlockingLoggerBuilder {
+    options: NonBlockingOptions,
+}
+
+impl NonBlockingLoggerBuilder {
     pub fn new() -> Self {
         Self {
-            default_level: LevelFilter::Trace,
-            module_levels: Vec::new(),
+            options: NonBlockingOptions {
+                default_level: LevelFilter::Trace,
+                module_levels: Vec::new(),
 
-            #[cfg(feature = "threads")]
-            threads: false,
+                #[cfg(feature = "threads")]
+                threads: false,
 
-            #[cfg(feature = "timestamps")]
-            timestamps: Timestamps::Utc,
+                #[cfg(feature = "timestamps")]
+                timestamps: Timestamps::Utc,
 
-            #[cfg(feature = "timestamps")]
-            timestamps_format: None,
+                #[cfg(feature = "timestamps")]
+                timestamps_format: None,
 
-            #[cfg(feature = "colors")]
-            colors: true,
+                #[cfg(feature = "colors")]
+                colors: true,
+            },
         }
     }
 
     #[must_use = "You must call init() to begin logging"]
     pub fn with_module_level(mut self, target: &str, level: LevelFilter) -> Self {
-        self.module_levels.push((target.to_string(), level));
-        self.module_levels
+        self.options.module_levels.push((target.to_string(), level));
+        self.options
+            .module_levels
             .sort_by_key(|(name, _level)| name.len().wrapping_neg());
         self
     }
@@ -84,20 +96,7 @@ impl NonBlockingLogger {
         self
     }
 
-    /// Configure the logger
-    pub fn max_level(&self) -> LevelFilter {
-        let max_level = self
-            .module_levels
-            .iter()
-            .map(|(_name, level)| level)
-            .copied()
-            .max();
-        max_level
-            .map(|lvl| lvl.max(self.default_level))
-            .unwrap_or(self.default_level)
-    }
-
-    pub fn init(self) -> Result<(), SetLoggerError> {
+    pub fn init(self) -> Result<NonBlockingLogger, SetLoggerError> {
         #[cfg(all(feature = "colored", feature = "stderr"))]
         use_stderr_for_colors();
 
@@ -115,8 +114,64 @@ impl NonBlockingLogger {
             }
         }
 
-        log::set_max_level(self.max_level());
-        log::set_boxed_logger(Box::new(self))
+        let (sender, receiver) = crossbeam_channel::bounded(1024);
+
+        let (worker, running) = worker::LogWorker::new(receiver);
+        worker.spawn();
+
+        let logger = NonBlockingLogger {
+            options: self.options,
+            sender,
+            running,
+        };
+
+        log::set_max_level(logger.max_level());
+        log::set_boxed_logger(Box::new(logger.clone()))?;
+
+        Ok(logger)
+    }
+}
+
+pub enum NonBlockingLoggerError {
+    Error { reason: String },
+}
+
+#[derive(Clone, Debug)]
+pub struct NonBlockingLogger {
+    options: NonBlockingOptions,
+    sender: crossbeam_channel::Sender<worker::WorkerMessage>,
+    running: Arc<AtomicBool>,
+}
+
+impl NonBlockingLogger {
+    pub fn max_level(&self) -> LevelFilter {
+        let max_level = self
+            .options
+            .module_levels
+            .iter()
+            .map(|(_name, level)| level)
+            .copied()
+            .max();
+        max_level
+            .map(|lvl| lvl.max(self.options.default_level))
+            .unwrap_or(self.options.default_level)
+    }
+
+    pub fn shutdown(self) -> Result<(), NonBlockingLoggerError> {
+        let compare = self.running.compare_exchange(
+            true,
+            false,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        );
+
+        if compare.is_err() {
+            Err(NonBlockingLoggerError::Error {
+                reason: "Failed to shutdown logger: It was already shutted down".to_string(),
+            })
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -124,6 +179,7 @@ impl Log for NonBlockingLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         &metadata.level().to_level_filter()
             <= self
+                .options
                 .module_levels
                 .iter()
                 /* At this point the Vec is already sorted so that we can simply take
@@ -131,7 +187,7 @@ impl Log for NonBlockingLogger {
                  */
                 .find(|(name, _level)| metadata.target().starts_with(name))
                 .map(|(_name, level)| level)
-                .unwrap_or(&self.default_level)
+                .unwrap_or(&self.options.default_level)
     }
 
     fn log(&self, record: &Record) {
@@ -175,7 +231,7 @@ impl Log for NonBlockingLogger {
 
             let thread = {
                 #[cfg(feature = "threads")]
-                if self.threads {
+                if self.options.threads {
                     let thread = std::thread::current();
 
                     format!("@{}", {
@@ -199,19 +255,29 @@ impl Log for NonBlockingLogger {
 
             let timestamp = {
                 #[cfg(feature = "timestamps")]
-                match self.timestamps {
+                match self.options.timestamps {
                     Timestamps::None => "".to_string(),
                     Timestamps::Utc => format!(
                         "{} ",
                         OffsetDateTime::now_utc()
-                            .format(&self.timestamps_format.unwrap_or(TIMESTAMP_FORMAT_UTC))
+                            .format(
+                                &self
+                                    .options
+                                    .timestamps_format
+                                    .unwrap_or(TIMESTAMP_FORMAT_UTC)
+                            )
                             .unwrap()
                     ),
                     Timestamps::UtcOffset(offset) => format!(
                         "{} ",
                         OffsetDateTime::now_utc()
                             .to_offset(offset)
-                            .format(&self.timestamps_format.unwrap_or(TIMESTAMP_FORMAT_OFFSET))
+                            .format(
+                                &self
+                                    .options
+                                    .timestamps_format
+                                    .unwrap_or(TIMESTAMP_FORMAT_OFFSET)
+                            )
                             .unwrap()
                     ),
                 }
@@ -229,18 +295,12 @@ impl Log for NonBlockingLogger {
                 record.args()
             );
 
-            #[cfg(not(feature = "stderr"))]
-            {
-                println!("{}", message);
-            }
-
-            #[cfg(feature = "stderr")]
-            eprintln!("{}", message);
+            self.sender.send(WorkerMessage::Log(message)).unwrap();
         }
     }
 
     fn flush(&self) {
-        // TODO: Implement flush
+        self.sender.send(WorkerMessage::Flush).unwrap();
     }
 }
 
