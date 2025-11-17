@@ -14,8 +14,10 @@ default = ["colored", "time"]
 log = { version = "0.4.28", features = ["std"] }
 time = { version = "0.3.44", features = ["formatting", "local-offset", "macros"], optional = true }
 colored = { version = "3.0.0", optional = true }
-libc = "0.2.177"
 crossbeam-channel = "0.5.15"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.177"
 
 [[example]]
 name = "test"

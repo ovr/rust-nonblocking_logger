@@ -1,6 +1,4 @@
-use log::Log;
 use rust_nonblocking_logger::NonBlockingLoggerBuilder;
-use std::thread;
 
 fn main() {
     let logger = NonBlockingLoggerBuilder::new().init().unwrap();
@@ -14,4 +12,6 @@ fn main() {
 
     log::warn!("This is an example message.");
     log::logger().flush();
+
+    logger.shutdown().unwrap();
 }

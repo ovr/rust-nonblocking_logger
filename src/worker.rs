@@ -1,4 +1,4 @@
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use crossbeam_channel::{Receiver, Sender};
 use std::collections::VecDeque;
 use std::io;
 use std::io::Write;

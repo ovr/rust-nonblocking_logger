@@ -1,6 +1,5 @@
-use crate::worker::WorkerMessage;
 #[cfg(feature = "colored")]
-use colored::Color;
+use colored::Colorize;
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
@@ -135,9 +134,20 @@ impl NonBlockingLoggerBuilder {
     }
 }
 
+#[derive(Debug)]
 pub enum NonBlockingLoggerError {
     Error { reason: String },
 }
+
+impl std::fmt::Display for NonBlockingLoggerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NonBlockingLoggerError::Error { reason } => write!(f, "NonBlockingLoggerError: {}", reason),
+        }
+    }
+}
+
+impl std::error::Error for NonBlockingLoggerError {}
 
 #[derive(Clone, Debug)]
 pub struct NonBlockingLogger {
@@ -298,13 +308,14 @@ impl Log for NonBlockingLogger {
                 record.args()
             );
 
-            self.sender.send(WorkerMessage::Log(message)).unwrap();
+            self.sender.send(worker::WorkerMessage::Log(message)).unwrap();
         }
     }
 
     fn flush(&self) {
         let (done_tx, done_rx) = crossbeam_channel::bounded(1);
-        self.sender.send(WorkerMessage::Flush(done_tx)).unwrap();
+        self.sender.send(worker::WorkerMessage::Flush(done_tx)).unwrap();
+
         // Block until flush completes
         let _ = done_rx.recv();
     }
