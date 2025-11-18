@@ -49,6 +49,8 @@ pub struct NonBlockingOptions {
 
     #[cfg(feature = "timestamps")]
     timestamps_format: Option<&'static [FormatItem<'static>]>,
+
+    channel_size: usize,
 }
 
 pub struct NonBlockingLoggerBuilder {
@@ -60,6 +62,8 @@ impl Default for NonBlockingLoggerBuilder {
         Self::new()
     }
 }
+
+pub const DEFAULT_CHANNEL_SIZE: usize = 16384;
 
 impl NonBlockingLoggerBuilder {
     pub fn new() -> Self {
@@ -79,6 +83,8 @@ impl NonBlockingLoggerBuilder {
 
                 #[cfg(feature = "colors")]
                 colors: true,
+
+                channel_size: DEFAULT_CHANNEL_SIZE,
             },
         }
     }
@@ -159,6 +165,26 @@ impl NonBlockingLoggerBuilder {
         self
     }
 
+    /// Set the size of the internal channel buffer.
+    ///
+    /// The channel buffer holds log messages before they are written to output.
+    /// A larger buffer allows more messages to be queued during bursts of logging,
+    /// but uses more memory. If the buffer fills up, new log messages may be dropped.
+    ///
+    /// Default: [`DEFAULT_CHANNEL_SIZE`] (16384 messages)
+    ///
+    /// # Panics
+    ///
+    /// Panics if `size` is 0. The channel size must be at least 1 to allow the logger
+    /// to buffer messages between the calling thread and the worker thread. A zero-sized
+    /// channel would not be able to hold any messages, making the logger non-functional.
+    #[must_use = "You must call init() to begin logging"]
+    pub fn with_channel_size(mut self, size: usize) -> Self {
+        assert!(size > 0, "Channel size must be greater than 0");
+        self.options.channel_size = size;
+        self
+    }
+
     pub fn init(self) -> Result<NonBlockingLogger, SetLoggerError> {
         #[cfg(all(feature = "colored", feature = "stderr"))]
         use_stderr_for_colors();
@@ -185,7 +211,7 @@ impl NonBlockingLoggerBuilder {
             }
         }
 
-        let (sender, receiver) = crossbeam_channel::bounded(1024);
+        let (sender, receiver) = crossbeam_channel::bounded(self.options.channel_size);
 
         let (worker, running) = worker::LogWorker::new(receiver);
         if let Err(err) = worker.spawn() {
