@@ -15,7 +15,6 @@
 ///
 /// println!("Hello, world!");
 /// println!("The answer is {}", 42);
-/// println!("{:?}", some_struct);
 /// println!(); // Just a newline
 /// ```
 ///
@@ -54,7 +53,6 @@ macro_rules! println {
 ///
 /// eprintln!("Error occurred!");
 /// eprintln!("Error code: {}", 500);
-/// eprintln!("{:?}", error);
 /// eprintln!(); // Just a newline
 /// ```
 ///
