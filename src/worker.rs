@@ -5,6 +5,11 @@ use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
+
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+
+#[cfg(not(unix))]
 use std::time::Duration;
 
 pub enum WorkerMessage {
@@ -47,7 +52,19 @@ impl LogWorker {
             let (front, _) = buf.as_slices();
             match out.write(front) {
                 Ok(0) => {
-                    // Nothing accepted, retry after short sleep
+                    #[cfg(unix)]
+                    {
+                        // Nothing accepted, wait for stdout to become writable using poll
+                        if let Err(err) = crate::io::wait_writable(out.as_raw_fd()) {
+                            crate::io::write_stderr_with_retry(&format!(
+                                "Error waiting for stdout: {}",
+                                err
+                            ));
+                            break;
+                        }
+                    }
+
+                    #[cfg(not(unix))]
                     thread::sleep(Duration::from_millis(1));
                 }
                 Ok(n) => {
@@ -57,7 +74,19 @@ impl LogWorker {
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    // Retry after short sleep
+                    #[cfg(unix)]
+                    {
+                        // Wait for stdout to become writable using poll
+                        if let Err(err) = crate::io::wait_writable(out.as_raw_fd()) {
+                            crate::io::write_stderr_with_retry(&format!(
+                                "Error waiting for stdout: {}",
+                                err
+                            ));
+                            break;
+                        }
+                    }
+
+                    #[cfg(not(unix))]
                     thread::sleep(Duration::from_millis(1));
                 }
                 Err(ref err) => {

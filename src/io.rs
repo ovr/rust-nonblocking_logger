@@ -17,6 +17,29 @@ pub fn set_nonblocking(fd: RawFd) -> Result<(), io::Error> {
     Ok(())
 }
 
+/// Waits for a file descriptor to become writable using poll().
+/// This is more efficient than sleeping when handling WouldBlock errors.
+/// Returns Ok(()) if the fd becomes writable, or Err if poll fails.
+#[cfg(unix)]
+pub(crate) fn wait_writable(fd: RawFd) -> Result<(), io::Error> {
+    unsafe {
+        let mut pollfd = libc::pollfd {
+            fd,
+            events: libc::POLLOUT,
+            revents: 0,
+        };
+
+        // Wait indefinitely for the fd to become writable
+        let ret = libc::poll(&mut pollfd as *mut libc::pollfd, 1, -1);
+
+        if ret == -1 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(())
+    }
+}
+
 /// On Windows, we can't easily set stdout/stderr to non-blocking mode
 /// This is a no-op that returns success
 #[cfg(not(unix))]
@@ -26,13 +49,9 @@ pub fn set_nonblocking(_fd: RawFd) -> io::Result<()> {
     Ok(())
 }
 
-/// Helper function to write error messages to stderr with WouldBlock retry logic.
-/// Uses the same retry pattern as write_buffer for consistency.
-#[cfg(unix)]
 pub fn write_stderr_with_retry(msg: &str) {
     use io::Write;
-    use std::thread;
-    use std::time::Duration;
+    use std::os::fd::AsRawFd;
 
     let formatted = format!("[log_nonblock error] {}\n", msg);
     let bytes = formatted.as_bytes();
@@ -44,16 +63,28 @@ pub fn write_stderr_with_retry(msg: &str) {
     while written < bytes.len() {
         match out.write(&bytes[written..]) {
             Ok(0) => {
-                // Nothing accepted, retry after short sleep
-                thread::sleep(Duration::from_millis(1));
+                #[cfg(unix)]
+                {
+                    // Nothing accepted, wait for stderr to become writable
+                    if wait_writable(stderr.as_raw_fd()).is_err() {
+                        // If poll fails, give up
+                        break;
+                    }
+                }
             }
             Ok(n) => {
                 // Remove written bytes
                 written += n;
             }
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                // Retry after short sleep
-                thread::sleep(Duration::from_millis(1));
+                #[cfg(unix)]
+                {
+                    // Wait for stderr to become writable
+                    if wait_writable(stderr.as_raw_fd()).is_err() {
+                        // If poll fails, give up
+                        break;
+                    }
+                }
             }
             Err(_) => {
                 // Hard error, give up
@@ -61,10 +92,4 @@ pub fn write_stderr_with_retry(msg: &str) {
             }
         }
     }
-}
-
-/// On Windows, use eprintln! as fallback (no recursion risk without non-blocking mode)
-#[cfg(not(unix))]
-pub fn write_stderr_with_retry(msg: &str) {
-    eprintln!("[log_nonblock error] {}", msg);
 }

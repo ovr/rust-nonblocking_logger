@@ -1,6 +1,7 @@
 #[cfg(feature = "colored")]
 use colored::Colorize;
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
+#[cfg(all(unix, feature = "nonblock-io"))]
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
