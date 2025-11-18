@@ -13,6 +13,7 @@ timestamps = ["time"]
 colors = ["colored"]
 threads = []
 stderr = []
+nonblock-io = []
 
 [dependencies]
 log = { version = "0.4.28", features = ["std"] }
@@ -34,6 +35,11 @@ required-features = ["colored", "time"]
 
 [[example]]
 name = "blocking_test"
+
+[[example]]
+name = "nonblocking_test"
+path = "examples/blocking_test.rs"
+required-features = ["nonblock-io"]
 
 [[bench]]
 name = "logger_comparison"
