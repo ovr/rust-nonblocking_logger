@@ -41,11 +41,11 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Release v${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
           body: |
-            ## Release v${{ steps.version.outputs.tag }}
+            ## Release ${{ steps.version.outputs.tag }}
 
-            Published to [crates.io](https://crates.io/crates/log_nonblock/v${{ steps.version.outputs.version }})
+            Published to [crates.io](https://crates.io/crates/log_nonblock/${{ steps.version.outputs.version }})
 
             ### Installation
             ```toml
