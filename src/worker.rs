@@ -45,18 +45,30 @@ impl LogWorker {
         }))
     }
 
-    fn write_buffer(out: &mut io::StdoutLock, buf: &[u8]) -> Result<(), io::Error> {
+    fn write_buffer(buf: &[u8]) -> Result<(), io::Error> {
         let mut cursor = 0;
+
+        let mut pipe = {
+            #[cfg(not(feature = "stderr"))]
+            {
+                io::stdout()
+            }
+
+            #[cfg(feature = "stderr")]
+            {
+                io::stderr()
+            }
+        };
 
         // Write all buffered data
         while cursor < buf.len() {
             let slice = &buf[cursor..];
-            match out.write(slice) {
+            match pipe.write(slice) {
                 Ok(0) => {
                     #[cfg(unix)]
                     {
                         // Nothing accepted, wait for stdout to become writable using poll
-                        crate::io::wait_writable(out.as_raw_fd())?
+                        crate::io::wait_writable(pipe.as_raw_fd())?
                     }
 
                     #[cfg(not(unix))]
@@ -69,8 +81,8 @@ impl LogWorker {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     #[cfg(unix)]
                     {
-                        // Wait for stdout to become writable using poll
-                        crate::io::wait_writable(out.as_raw_fd())?
+                        // Wait for stdout to become writable usig poll
+                        crate::io::wait_writable(pipe.as_raw_fd())?
                     }
 
                     #[cfg(not(unix))]
@@ -88,7 +100,6 @@ impl LogWorker {
 
     fn run(&mut self) {
         let stdout = io::stdout();
-        let mut out = stdout.lock();
 
         let mut pipe_buffer = Vec::with_capacity(2 * 1024);
 
@@ -100,7 +111,7 @@ impl LogWorker {
                         if msg.len() < 1280 {
                             msg
                         } else {
-                            if let Err(err) = Self::write_buffer(&mut out, msg.as_bytes()) {
+                            if let Err(err) = Self::write_buffer(msg.as_bytes()) {
                                 crate::io::write_stderr_with_retry_internal(&format!(
                                     "Error waiting for stdout: {}",
                                     err
@@ -111,7 +122,7 @@ impl LogWorker {
                         }
                     }
                     WorkerMessage::Flush(done) => {
-                        if let Err(err) = out.flush() {
+                        if let Err(err) = stdout.lock().flush() {
                             crate::io::write_stderr_with_retry_internal(&format!(
                                 "Error flushing stdout: {}",
                                 err
@@ -137,7 +148,7 @@ impl LogWorker {
                         pipe_buffer.extend_from_slice(second_message_to_pipe.as_bytes());
                         drop(second_message_to_pipe);
 
-                        let res = Self::write_buffer(&mut out, pipe_buffer.as_slice());
+                        let res = Self::write_buffer(pipe_buffer.as_slice());
 
                         pipe_buffer.clear();
 
@@ -149,8 +160,8 @@ impl LogWorker {
                         }
                     }
                     WorkerMessage::Flush(done) => {
-                        let res = Self::write_buffer(&mut out, first_message_to_pipe.as_bytes());
-                        let flush_res = out.flush();
+                        let res = Self::write_buffer(first_message_to_pipe.as_bytes());
+                        let flush_res = stdout.lock().flush();
 
                         // Signal completion (ignore if receiver was dropped)
                         let _ = done.send(());
@@ -173,8 +184,7 @@ impl LogWorker {
                     }
                 },
                 Err(TryRecvError::Empty) => {
-                    if let Err(err) = Self::write_buffer(&mut out, first_message_to_pipe.as_bytes())
-                    {
+                    if let Err(err) = Self::write_buffer(first_message_to_pipe.as_bytes()) {
                         crate::io::write_stderr_with_retry_internal(&format!(
                             "Error waiting for stdout: {}",
                             err
