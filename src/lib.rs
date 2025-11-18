@@ -8,8 +8,15 @@ use std::sync::atomic::AtomicBool;
 #[cfg(feature = "timestamps")]
 use time::{OffsetDateTime, UtcOffset, format_description::FormatItem};
 
+#[cfg(feature = "macros")]
+pub mod io;
+#[cfg(not(feature = "macros"))]
 mod io;
+
 mod worker;
+
+#[cfg(feature = "macros")]
+mod macros;
 
 #[cfg(feature = "timestamps")]
 #[derive(Clone, Debug, PartialEq)]
@@ -194,7 +201,7 @@ impl NonBlockingLoggerBuilder {
         {
             #[cfg(feature = "nonblock-io")]
             if let Err(err) = io::set_nonblocking(std::io::stdout().as_raw_fd()) {
-                io::write_stderr_with_retry(&format!(
+                io::write_stdout_with_retry_internal(&format!(
                     "Failed to set STDOUT to non-blocking mode: {}",
                     err
                 ));
@@ -205,7 +212,7 @@ impl NonBlockingLoggerBuilder {
         {
             #[cfg(feature = "nonblock-io")]
             if let Err(err) = io::set_nonblocking(std::io::stderr().as_raw_fd()) {
-                io::write_stderr_with_retry(&format!(
+                io::write_stderr_with_retry_internal(&format!(
                     "Failed to set STDERR to non-blocking mode: {}",
                     err
                 ));
@@ -409,7 +416,7 @@ impl Log for NonBlockingLogger {
             );
 
             if let Err(err) = self.sender.send(worker::WorkerMessage::Log(message)) {
-                io::write_stderr_with_retry(&format!("Failed to schedule log: {}", err));
+                io::write_stderr_with_retry_internal(&format!("Failed to schedule log: {}", err));
             }
         }
     }
@@ -423,7 +430,7 @@ impl Log for NonBlockingLogger {
                 let _ = done_rx.recv();
             }
             Err(err) => {
-                io::write_stderr_with_retry(&format!(
+                io::write_stderr_with_retry_internal(&format!(
                     "Failed to send flush request to logger worker: {}",
                     err
                 ));

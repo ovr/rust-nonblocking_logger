@@ -8,12 +8,13 @@ edition = "2024"
 repository = "https://github.com/ovr/log_nonblock"
 
 [features]
-default = ["colors", "timestamps"]
+default = ["colors", "timestamps", "macros"]
 timestamps = ["time"]
 colors = ["colored"]
 threads = []
 stderr = []
 nonblock-io = []
+macros = []
 
 [dependencies]
 log = { version = "0.4.28", features = ["std"] }

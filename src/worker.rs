@@ -56,7 +56,7 @@ impl LogWorker {
                     {
                         // Nothing accepted, wait for stdout to become writable using poll
                         if let Err(err) = crate::io::wait_writable(out.as_raw_fd()) {
-                            crate::io::write_stderr_with_retry(&format!(
+                            crate::io::write_stderr_with_retry_internal(&format!(
                                 "Error waiting for stdout: {}",
                                 err
                             ));
@@ -78,7 +78,7 @@ impl LogWorker {
                     {
                         // Wait for stdout to become writable using poll
                         if let Err(err) = crate::io::wait_writable(out.as_raw_fd()) {
-                            crate::io::write_stderr_with_retry(&format!(
+                            crate::io::write_stderr_with_retry_internal(&format!(
                                 "Error waiting for stdout: {}",
                                 err
                             ));
@@ -91,7 +91,7 @@ impl LogWorker {
                 }
                 Err(ref err) => {
                     // Hard error, give up
-                    crate::io::write_stderr_with_retry(&format!(
+                    crate::io::write_stderr_with_retry_internal(&format!(
                         "Error flushing to stdout: {}",
                         err
                     ));
@@ -105,7 +105,7 @@ impl LogWorker {
         Self::write_buffer(out, buf);
 
         if let Err(err) = out.flush() {
-            crate::io::write_stderr_with_retry(&format!("Error flushing stdout: {}", err));
+            crate::io::write_stderr_with_retry_internal(&format!("Error flushing stdout: {}", err));
         }
     }
 

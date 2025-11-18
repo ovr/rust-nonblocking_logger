@@ -16,6 +16,7 @@
 ///   Without pv installed, you can use: | dd bs=1K > /dev/null
 use log::{LevelFilter, info};
 use log_nonblock::NonBlockingLoggerBuilder;
+use log_nonblock::{eprintln, println};
 use std::env;
 use std::time::Instant;
 
@@ -64,12 +65,12 @@ fn main() {
         }
     };
 
-    eprintln!(
+    println!(
         "\nStarting test with {} {}KB messages...",
         MESSAGE_COUNT,
         MESSAGE_SIZE / 1024
     );
-    eprintln!(
+    println!(
         "Total data: {} MB",
         (MESSAGE_COUNT * MESSAGE_SIZE) / (1024 * 1024)
     );

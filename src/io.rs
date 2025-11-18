@@ -1,5 +1,6 @@
 use std::io;
-use std::os::fd::RawFd;
+use std::io::Write;
+use std::os::fd::{AsRawFd, RawFd};
 
 /// Sets a file descriptor to non-blocking mode on Unix systems
 #[cfg(unix)]
@@ -49,15 +50,31 @@ pub fn set_nonblocking(_fd: RawFd) -> io::Result<()> {
     Ok(())
 }
 
-pub fn write_stderr_with_retry(msg: &str) {
-    use io::Write;
-    use std::os::fd::AsRawFd;
+/// Internal function for writing error messages to STDERR with retry logic.
+#[allow(unused)]
+pub(crate) fn write_stderr_with_retry_internal(msg: &str) {
+    let out = io::stderr();
+    write_with_retry_internal(
+        out.lock(),
+        out.as_raw_fd(),
+        &format!("[log_nonblock error] {}\n", msg),
+    )
+}
 
-    let formatted = format!("[log_nonblock error] {}\n", msg);
-    let bytes = formatted.as_bytes();
+/// Internal function for writing error messages to STDOUT with retry logic.
+#[allow(unused)]
+pub(crate) fn write_stdout_with_retry_internal(msg: &str) {
+    let out = io::stdout();
+    write_with_retry_internal(
+        out.lock(),
+        out.as_raw_fd(),
+        &format!("[log_nonblock error] {}\n", msg),
+    )
+}
 
-    let stderr = io::stderr();
-    let mut out = stderr.lock();
+fn write_with_retry_internal<W: Write>(mut out: W, raw_fd: RawFd, msg: &str) {
+    let bytes = msg.as_bytes();
+
     let mut written = 0;
 
     while written < bytes.len() {
@@ -65,8 +82,8 @@ pub fn write_stderr_with_retry(msg: &str) {
             Ok(0) => {
                 #[cfg(unix)]
                 {
-                    // Nothing accepted, wait for stderr to become writable
-                    if wait_writable(stderr.as_raw_fd()).is_err() {
+                    // Nothing accepted, wait for fd to become writable
+                    if wait_writable(raw_fd).is_err() {
                         // If poll fails, give up
                         break;
                     }
@@ -79,8 +96,8 @@ pub fn write_stderr_with_retry(msg: &str) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 #[cfg(unix)]
                 {
-                    // Wait for stderr to become writable
-                    if wait_writable(stderr.as_raw_fd()).is_err() {
+                    // Wait for fd to become writable
+                    if wait_writable(raw_fd).is_err() {
                         // If poll fails, give up
                         break;
                     }
@@ -92,4 +109,22 @@ pub fn write_stderr_with_retry(msg: &str) {
             }
         }
     }
+}
+
+/// Writes a message to stdout with retry logic, without adding any prefix.
+/// This function is used by the `println!` macro when the `macros` feature is enabled.
+#[doc(hidden)]
+#[cfg(feature = "macros")]
+pub fn write_stdout_with_retry(msg: &str) {
+    let out = io::stdout();
+    write_with_retry_internal(out.lock(), out.as_raw_fd(), msg)
+}
+
+/// Writes a message to stderr with retry logic, without adding any prefix.
+/// This function is used by the `eprintln!` macro when the `macros` feature is enabled.
+#[doc(hidden)]
+#[cfg(feature = "macros")]
+pub fn write_stderr_with_retry(msg: &str) {
+    let out = io::stderr();
+    write_with_retry_internal(out.lock(), out.as_raw_fd(), msg)
 }
