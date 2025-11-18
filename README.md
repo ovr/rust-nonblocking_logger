@@ -32,6 +32,8 @@ When you write to STDOUT/STDERR, your application thread **stops and waits** unt
 
 ### Problem #2: Rust's Standard Library Doesn't Support Non-Blocking STDOUT
 
+**Real-world example**: When building Rust modules that run inside Node.js (using N-API, neon, or similar), Node.js sets STDOUT/STDERR to non-blocking mode by default. This causes standard Rust logging crates to panic with "Resource temporarily unavailable" errors, making them unusable in Node.js environments without special handling.
+
 <details>
 <summary>Click to expand explanation</summary>
 
@@ -48,6 +50,7 @@ println!("Large message");  // L thread panicked: failed printing to stdout: Res
 **The problem**: When STDOUT/STDERR is in non-blocking mode, the OS returns `WouldBlock` errors when the output buffer is full. Rust's `std::io::Stdout` and the `println!`/`eprintln!` macros are **not designed to handle this** - they will panic immediately.
 
 This happens with:
+- **Rust modules running in Node.js**: Node.js uses non-blocking I/O by default, causing panics in standard Rust crates
 - **Large messages** that don't fit in the kernel buffer (~64KB on most systems)
 - **Parallel usage** from multiple threads overwhelming the output buffer
 - **Any situation** where the consumer can't keep up with your write rate
@@ -73,9 +76,13 @@ log::info!("Response sent: {}", response);
 // ... blocked for 1-5ms ...
 ```
 
-**Result**: 5-25ms of your request latency is spent waiting for I/O operations. In a system handling 1000 req/s, this can be the difference between meeting your SLA and missing it.
+**Result**: N ms of your request latency is spent waiting for I/O operations. In a system handling 1000 req/s, this can be the difference between meeting your SLA and missing it.
 
 </details>
+
+### Benchmarks
+
+See [BENCH_RESULTS](BENCH_RESULTS.md) for detailed results, metrics, and instructions.
 
 ### License
 

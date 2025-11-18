@@ -99,12 +99,12 @@ fn main() {
             MESSAGE_COUNT as f64 / log_duration.as_secs_f64()
         );
         eprintln!(
-            "  Throughput (total): {:.2} messages/sec",
-            MESSAGE_COUNT as f64 / start.elapsed().as_secs_f64()
-        );
-        eprintln!(
             "  Throughput (logging): {:.2} MB/sec",
             (MESSAGE_COUNT * MESSAGE_SIZE) as f64 / (1024.0 * 1024.0) / log_duration.as_secs_f64()
+        );
+        eprintln!(
+            "  Throughput (total): {:.2} messages/sec",
+            MESSAGE_COUNT as f64 / start.elapsed().as_secs_f64()
         );
         eprintln!(
             "  Throughput (total): {:.2} MB/sec",
